@@ -1,13 +1,25 @@
 const fs = require('fs');
 const starships = require('./starships_store.js');
 
-search("palace coruscant naboo", starships)
+//* INPUT
+search("cruiser", starships)
 
+
+//* ENGINE
 function search(term, data) {
     console.log("SEARCH: ", term);
+    // SEARCH FILTERS
     const exactMatchSpecific = () => exactMatch(term, data, 'specific', 'array');
     const exactMatchAny = () => exactMatch(term, data, 'any', 'array');
-    // console.log(dedupe([...exactMatchSpecific, ...exactMatchAny], 'object'));
+    // console.log(dedupe([...exactMatchSpecific(), ...exactMatchAny()], 'object'));
+
+    const exactMatchWordsInOrderSpecific = () => exactMatch(term, data, 'specific', 'array', {mod:[fuzzySpaces]});
+    const exactMatchWordsInOrderAny = () => exactMatch(term, data, 'any', 'array', {mod:[fuzzySpaces]});
+    // console.log(dedupe([...exactMatchWordsInOrderSpecific(), ...exactMatchWordsInOrderAny()]));
+
+    const exactIncludeAllSpecific = () => exactMatch(term, data, 'specific-includes', 'array');
+    const exactIncludeAllAny = () => exactMatch(term, data, 'any-includes', 'array');
+    // console.log(dedupe([...exactIncludeAllSpecific(), ...exactIncludeAllAny()], 'object'));
     
     const fuzzyMatchSpecific = () => fuzzyMatch(term, data, 'specific', 'array');
     const fuzzyMatchAny = () => fuzzyMatch(term, data, 'any', 'array');
@@ -17,67 +29,45 @@ function search(term, data) {
     const lazyMatchAny = () => lazyMatch(term, data, 'any', 'array');
     // console.log(dedupe([...lazyMatchSpecific(), ...lazyMatchAny()], 'object'));
     
-    const beginEndRegex = () => new RegExp(term.split(' ').map(word => 
-        "(?<=[^a-zA-Z])"+word[0]+"\\w*"+word[word.length -1]+"(?=[^a-zA-Z])"+"|^"+word[0]+"\\w*"+word[word.length -1]+"$"+"|"+word[0]+"\\w*"+word[word.length -1]+"\\W").join(' '), 'ig');
-    const beginEndMatchSpecific = () => exactMatch(term, data, 'specific', 'array', beginEndRegex());
-    const beginEndMatchAny = () => exactMatch(term, data, 'specific', 'array', beginEndRegex());
+    const beginEndMatchSpecific = () => exactMatch(term, data, 'specific', 'array', {regex:FLCharClamped});
+    const beginEndMatchAny = () => exactMatch(term, data, 'specific', 'array', {regex:FLCharClamped});
     // console.log(dedupe([...beginEndMatchSpecific(), ...beginEndMatchAny()], 'object'));
     
-    const eachWordExactSpecific = () => term.split(' ').map(word => 
+    const matchEachWordExactSpecific = () => term.split(' ').map(word => 
         exactMatch(word, data, 'specific', 'array')
     ).flat(1);
-    const eachWordExactAny = () => term.split(' ').map(word => 
+    const matchEachWordExactAny = () => term.split(' ').map(word => 
         exactMatch(word, data, 'any', 'array')
     ).flat(1);
-    // console.log("DEDUPED RESULTS: ",dedupe([...eachWordExactSpecific(), ...eachWordExactAny()], 'object'));
-    // const exactMatchEachWord = (getSpecific=true, getAny=true) => {
-    //     let allMatches = [];
-    //     getSpecific && allMatches.push(...eachWordExactSpecific());
-    //     getAny && allMatches.push(...eachWordExactAny());
 
-    //     let matcheCountPerWord = {}
-    //     allMatches.forEach(wordObj => matcheCountPerWord[wordObj.term] = wordObj.resultCount);
-
-    //     //* Map over each word; search each word
-    //     // // Then; combine dedupe each word => return to array of arrays of each word
-    //     // Then; for each word/result-array, sort & grab data on results per word
-    //     // And; compare the number of match arrays to the number of words (ignore "or, and, is, a, etc")
-    //     // Then; sort results in order of greatest number of matches to least
-    // }
-
-
-    const eachWordFuzzySpecific = () => term.split(' ').map(word => 
+    const matchEachWordFuzzySpecific = () => term.split(' ').map(word => 
         fuzzyMatch(word, data, 'specific')
     ).flat(1);
-    const eachWordFuzzyAny = () => term.split(' ').map(word => 
+    const matchEachWordFuzzyAny = () => term.split(' ').map(word => 
         fuzzyMatch(word, data, 'any')
     ).flat(1);
     // console.log("DEDUPED RESULTS: ",dedupe([...eachWordFuzzySpecific(), ...eachWordFuzzyAny()], 'object'));
 
-    //! This one is useless; just returns all results
-    const eachWordBeginEndRegex = (word) => new RegExp(
-        "(?<=[^a-zA-Z])"+word[0]+"\\w*"+word[word.length -1]+"(?=[^a-zA-Z])"+"|^"+word[0]+"\\w*"+word[word.length -1]+"$"+"|"+word[0]+"\\w*"+word[word.length -1]+"\\W", 'ig');
-    const eachWordBeginEndSpecific = () => term.split(' ').map(word => 
-        exactMatch(word, data, 'specific', 'array', eachWordBeginEndRegex(word))
-    ).flat(1);
-    const eachWordBeginEndAny = () => term.split(' ').map(word => 
-        exactMatch(word, data, 'any', 'array', eachWordBeginEndRegex(word))
-    ).flat(1);
-    // console.log(dedupe([...eachWordBeginEndSpecific(), ...eachWordBeginEndAny()], 'object'));
-
     const fullSearch = dedupe([
         ...exactMatchSpecific(), 
-        ...exactMatchAny(), 
+        ...exactMatchAny(),
+
+        ...exactMatchWordsInOrderSpecific(), 
+        ...exactMatchWordsInOrderAny(),
+        ...exactIncludeAllSpecific(), 
+        ...exactIncludeAllAny(),
+
         ...fuzzyMatchSpecific(), 
         ...fuzzyMatchAny(), 
         ...lazyMatchSpecific(), 
         ...lazyMatchAny(),
         ...beginEndMatchSpecific(), 
         ...beginEndMatchAny(),
-        ...eachWordExactSpecific(), 
-        ...eachWordExactAny(),
-        ...eachWordFuzzySpecific(), 
-        ...eachWordFuzzyAny()
+
+        ...matchEachWordExactSpecific(), 
+        ...matchEachWordExactAny(),
+        ...matchEachWordFuzzySpecific(), 
+        ...matchEachWordFuzzyAny()
     ], 'object')
     console.log("FULL SEARCH:", fullSearch)
 
@@ -100,18 +90,44 @@ function search(term, data) {
     // );
 }
 
-function exactMatch(term, data, type='specific', returnType='array', otherRegex) { let result;
+
+//* MODIFIERS
+function fuzzySpaces(term) {return term.replaceAll(' ', '.+')};
+
+//* ALT REGEX
+function FLCharClamped(term) {
+    return new RegExp(term.split(' ').map(word =>  
+        "(?<=[^a-zA-Z])"+word[0]+"\\w*"+word[word.length -1]+"(?=[^a-zA-Z])"
+        +"|^"+word[0]+"\\w*"+word[word.length -1]+"$"
+        +"|"+word[0]+"\\w*"+word[word.length -1]+"\\W"
+    ).join(' '), 'ig');
+};
+
+
+//* SEARCH FUNCTIONS
+function exactMatch(term, data, type='specific', returnType='array', options=false) { let result;
     // console.log("@EXACT MATCH FILTER:", term, type);
-    const regex = otherRegex
-        ? otherRegex
-        : new RegExp(term, 'ig');
-    // console.log(" Regex matches term?", regex.test(term), term.match(regex));
+
+    if (options.mod) term = options.mod.reduce((current,modifier) => modifier(current), term);
+
+    const regex = options.regex
+        ? (text=term) => options.regex(text)
+        : (text=term) => new RegExp(text, 'ig');
+    // console.log(" Regex matches term?", regex().test(term), term.match(regex()));
     switch (type) {
         case 'specific': result = data.filter(ship => 
-            ship.name.match(regex) || ship.model.match(regex) );
+            ship.name.match(regex()) || ship.model.match(regex()) );
         break;
         case 'any': result = data.filter(ship =>
-            JSON.stringify(Object.values(ship)).match(regex) );
+            JSON.stringify(Object.values(ship)).match(regex()) );
+        break;
+        case 'specific-includes': result = data.filter( ship => 
+            term.split(' ').map(word => ship.name.match(regex(word))).every(res => res != null)
+            || term.split(' ').map(word => ship.model.match(regex(word))).every(res => res != null) );
+        break;
+        case 'any-includes': result = data.filter( ship =>
+            term.split(' ').map(word => JSON.stringify(Object.values(ship)).match(regex(word))) 
+                .every(res => res != null));
         break;
     }
     // console.log(" Exact Match Result: ", {searchTerm:term, resultCount:result?.length || 0, result});
@@ -123,7 +139,7 @@ function exactMatch(term, data, type='specific', returnType='array', otherRegex)
 function fuzzyMatch(term, data, type='specific', returnType='array') { let result;
     // console.log("@FUZZY MATCH FILTER:", term, type);
     const interpolatedString = term.split('').map(char => 
-        `${char}\\w*`).join('').replace(/\\w\*$/, '');
+        `${char}\\w*` ).join('').replace(/\\w\*$/, '');
     const regex = new RegExp(interpolatedString, 'ig');
     // console.log(" Regex matches term?", regex.test(term), term.match(regex));
     switch (type) {
@@ -162,13 +178,15 @@ function lazyMatch(term, data, type='specific', returnType='array') { let result
 }
 
 
-
+//* DE-DUPLICATION
 function dedupe(data, returnType='array') {
-    const result = data.filter((ship,index) => {
-        return data.map((s,i) => s==ship && i).every(idx => {
-            return typeof idx==='number' ? index <= idx : true
-        })
-    });
+    let result = {};
+    data.forEach(ship => 
+        !result[ship.id] 
+            ? result[ship.id] = {...ship, hitCount:1}
+            : result[ship.id].hitCount++
+    );
+    result = Object.values(result).sort((a,b) => b.hitCount - a.hitCount)
     return returnType==='object'
         ? {resultCount:result.length || 0, result}
         : result
