@@ -1,14 +1,31 @@
 const fs = require('fs');
-const starships = require('./starships_store.js');
+const starships = require('./data/starships_store.js');
+const popularity = JSON.parse(fs.readFileSync('./data/popularity.json', 'utf8'));
 
 //* INPUT
-search("cruiser", starships)
+// search("cruiser", starships)
 
+//* SEARCH FILTERS
+const filters = {
+    exactMatch: (p) => exactMatch(p.term, p.data, p.type, p.returnType),
+    exactMatchWordsInOrder: (p) => exactMatch(p.term, p.data, p.type, p.returnType, {mod:[fuzzySpaces]}),
+    exactIncludeAll: (p) => exactMatch(p.term, p.data, p.type+'-includes', p.returnType),
+    fuzzyMatch: (p) => fuzzyMatch(p.term, p.data, p.type, p.returnType),
+    lazyMatch: (p) => lazyMatch(p.term, p.data, p.type, p.returnType),
+    beginEndMatch: (p) => exactMatch(p.term, p.data, p.type, p.returnType, {regex:FLCharClamped}),
+    matchEachWordExact: (p) => p.term.split(' ').map(word => 
+        exactMatch(word, p.data, p.type, p.returnType)
+    ).flat(1),
+    matchEachWordFuzzy: (p) => p.term.split(' ').map(word => 
+        fuzzyMatch(word, p.data, p.type, p.returnType)
+    ).flat(1)
+}
 
 //* ENGINE
-function search(term, data) {
-    console.log("SEARCH: ", term);
-    // SEARCH FILTERS
+module.exports = function search(term, data, options) {
+    if (!options?.returnType) options.returnType = null;
+    console.log("SEARCH: ", term, options);
+    // SEARCH FILTER PRESETS
     const exactMatchSpecific = () => exactMatch(term, data, 'specific', 'array');
     const exactMatchAny = () => exactMatch(term, data, 'any', 'array');
     // console.log(dedupe([...exactMatchSpecific(), ...exactMatchAny()], 'object'));
@@ -48,46 +65,80 @@ function search(term, data) {
     ).flat(1);
     // console.log("DEDUPED RESULTS: ",dedupe([...eachWordFuzzySpecific(), ...eachWordFuzzyAny()], 'object'));
 
-    const fullSearch = dedupe([
-        ...exactMatchSpecific(), 
-        ...exactMatchAny(),
+    let result;
+    switch (options.block) {
+        case 1: result = dedupe([
+            ...exactMatchSpecific(), 
+            ...exactMatchAny(),
+    
+            ...exactMatchWordsInOrderSpecific(), 
+            ...exactMatchWordsInOrderAny(),
+            ...exactIncludeAllSpecific(), 
+            ...exactIncludeAllAny(),
+        ], options.returnType); 
+        break;
+        case 2: result = dedupe([
+            ...fuzzyMatchSpecific(), 
+            ...fuzzyMatchAny(), 
+            ...lazyMatchSpecific(), 
+            ...lazyMatchAny(),
+            ...beginEndMatchSpecific(), 
+            ...beginEndMatchAny(),
 
-        ...exactMatchWordsInOrderSpecific(), 
-        ...exactMatchWordsInOrderAny(),
-        ...exactIncludeAllSpecific(), 
-        ...exactIncludeAllAny(),
+            ...matchEachWordExactSpecific(), 
+            ...matchEachWordExactAny(),
+            ...matchEachWordFuzzySpecific(), 
+            ...matchEachWordFuzzyAny()
+        ], options.returnType); 
+        break;
+        case 0: result = dedupe([
+            ...exactMatchSpecific(), 
+            ...exactMatchAny(),
 
-        ...fuzzyMatchSpecific(), 
-        ...fuzzyMatchAny(), 
-        ...lazyMatchSpecific(), 
-        ...lazyMatchAny(),
-        ...beginEndMatchSpecific(), 
-        ...beginEndMatchAny(),
+            ...exactMatchWordsInOrderSpecific(), 
+            ...exactMatchWordsInOrderAny(),
+            ...exactIncludeAllSpecific(), 
+            ...exactIncludeAllAny(),
 
-        ...matchEachWordExactSpecific(), 
-        ...matchEachWordExactAny(),
-        ...matchEachWordFuzzySpecific(), 
-        ...matchEachWordFuzzyAny()
-    ], 'object')
-    console.log("FULL SEARCH:", fullSearch)
+            ...fuzzyMatchSpecific(), 
+            ...fuzzyMatchAny(), 
+            ...lazyMatchSpecific(), 
+            ...lazyMatchAny(),
+            ...beginEndMatchSpecific(), 
+            ...beginEndMatchAny(),
 
+            ...matchEachWordExactSpecific(), 
+            ...matchEachWordExactAny(),
+            ...matchEachWordFuzzySpecific(), 
+            ...matchEachWordFuzzyAny()
+        ], options.returnType);
+        break;
+        case 'x': { const calls = [];
+            for (let name of options.filters) {
+                const filterResult = filters[name]({
+                    term, data, 
+                    type:options.params?.type || null,
+                    returnType:options.params?.returnType || null
+                });
+                if (options.params?.returnType==='object-individual') filterResult['filterName'] = name;
+                calls.push(...filterResult);
+            };
+            result = options.params?.returnType==='object-individual' 
+                ? calls
+                : dedupe(calls, options.params?.returnType || null, popularity)
+        }; break;
+        default: result = dedupe([
+            ...exactMatchSpecific(),
+            ...exactMatchWordsInOrderSpecific(),
+            ...fuzzyMatchAny()
+        ], options.returnType);
+    };
 
-    // console.log(
-    //     "EXACT MATCH - SPECIFIC", exactMatchSpecific,
-    //     "EXACT MATCH - ANY", exactMatchAny,
-    //     "FUZZY MATCH - SPECIFIC", fuzzyMatchSpecific,
-    //     "FUZZY MATCH - ANY", fuzzyMatchAny,
-    //     "LAZY MATCH - SPECIFIC", lazyMatchSpecific,
-    //     "LAZY MATCH - ANY", lazyMatchAny,
-    //     "BEGIN-END MATCH - SPECIFIC", beginEndMatchSpecific,
-    //     "BEGIN-END MATCH - ANY", beginEndMatchAny,
-    //     "EACH-WORD EXACT MATCH - SPECIFIC", eachWordExactSpecific,
-    //     "EACH-WORD EXACT MATCH - ANY", eachWordExactAny,
-    //     "EACH-WORD FUZZY MATCH - EXACT", eachWordFuzzySpecific,
-    //     "EACH-WORD FUZZY MATCH - ANY", eachWordFuzzyAny,
-    //     "EACH-WORD BEGIN-END MATCH - EXACT", eachWordBeginEndMatchSpecific,
-    //     "EACH-WORD BEGIN-END - ANY", eachWordBeginEndMatchAny,
-    // );
+    fs.writeFile('./data/popularity.json', JSON.stringify(popularity,null,2), (err) => {
+        console.error(err)
+    });
+
+    return result
 }
 
 
@@ -130,6 +181,11 @@ function exactMatch(term, data, type='specific', returnType='array', options=fal
                 .every(res => res != null));
         break;
     }
+    if (typeof popularity !== 'object') {
+        console.log(popularity)
+        throw new Error("ERROR! Popularity not sproperly set.")
+    }
+    result.forEach(ship => popularity[ship.name] ? popularity[ship.name]++ : popularity[ship.name] = 1);
     // console.log(" Exact Match Result: ", {searchTerm:term, resultCount:result?.length || 0, result});
     return returnType==='object'
         ? {searchTerm:term, resultCount:result?.length || 0, result}
@@ -178,15 +234,15 @@ function lazyMatch(term, data, type='specific', returnType='array') { let result
 }
 
 
-//* DE-DUPLICATION
-function dedupe(data, returnType='array') {
+//* DE-DUPLICATION & RANKING
+function dedupe(data, returnType='array', popularity={}) {
     let result = {};
     data.forEach(ship => 
         !result[ship.id] 
-            ? result[ship.id] = {...ship, hitCount:1}
+            ? result[ship.id] = {...ship, hitCount: 1 + (popularity[ship.id] || 0)}
             : result[ship.id].hitCount++
     );
-    result = Object.values(result).sort((a,b) => b.hitCount - a.hitCount)
+    result = Object.values(result).sort((a,b) => b.hitCount - a.hitCount);
     return returnType==='object'
         ? {resultCount:result.length || 0, result}
         : result
